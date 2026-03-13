@@ -35,7 +35,6 @@ public class UserController {
         return ResponseEntity.ok(Map.of("message", "User deleted"));
     }
 
-    // Health-check shortcut
     @GetMapping("/health")
     public Map<String, String> health() {
         return Map.of("status", "UP", "service", "backend");
