@@ -7,7 +7,7 @@
 ![Nginx](https://img.shields.io/badge/Nginx-009639?style=for-the-badge&logo=nginx&logoColor=white)
 
 A production-style **Three-Tier Web Application** deployed locally using **Minikube** (Kubernetes).  
-The app is a User Management System with a React-style frontend, Spring Boot REST API, and MySQL database — all running as Kubernetes workloads.
+The app is a User Management System with an HTML/JS frontend, Spring Boot REST API, and MySQL database — all running as Kubernetes workloads.
 
 ---
 
@@ -16,7 +16,8 @@ The app is a User Management System with a React-style frontend, Spring Boot RES
 ```
                     Browser
                        │
-              http://<minikube-ip>:30090
+              http://localhost:8090  (Windows/WSL2)
+              http://192.168.49.2:30090  (Ubuntu native)
                        │
             ┌──────────▼──────────┐
             │   Frontend (Nginx)   │   Deployment + NodePort :30090
@@ -71,7 +72,7 @@ three-tier-app/
     ├── mysql-configmap.yaml           # DB init SQL
     ├── mysql-statefulset.yaml         # StatefulSet + Headless + ClusterIP
     ├── backend-deployment.yaml        # Backend Deployment + NodePort
-    └── frontend-deployment.yaml      # Frontend Deployment + NodePort
+    └── frontend-deployment.yaml       # Frontend Deployment + NodePort
 ```
 
 ---
@@ -109,19 +110,51 @@ The script will automatically:
 - ✅ Point Docker at Minikube's internal daemon
 - ✅ Build `springboot-backend:latest` image (~3 min Maven build)
 - ✅ Build `frontend-ui:latest` image (~30 sec)
-- ✅ Apply all Kubernetes manifests in order
+- ✅ Apply all Kubernetes manifests in correct order
 - ✅ Wait for each tier to become Ready
 - ✅ Print the access URLs
 
-### 4. Access the Application
+---
+
+## 🌐 Accessing the Application
+
+### On Ubuntu (Native Linux)
 ```bash
 # Get Minikube IP
-minikube ip
+minikube ip    # e.g. 192.168.49.2
 
 # Open in browser
-http://<minikube-ip>:30090        # Frontend UI
-http://<minikube-ip>:30080/api/users  # Backend API
+http://192.168.49.2:30090             # Frontend UI
+http://192.168.49.2:30080/api/users   # Backend API
 ```
+
+### On Windows via WSL2
+
+Run these commands **every time after reboot:**
+
+**Step 1 — Ubuntu terminal (keep both running):**
+```bash
+kubectl port-forward -n three-tier service/frontend-service 8090:80 --address 0.0.0.0 &
+kubectl port-forward -n three-tier service/backend-service 8081:8080 --address 0.0.0.0 &
+
+# Get your WSL2 IP
+hostname -I | awk '{print $1}'
+```
+
+**Step 2 — PowerShell (Run as Administrator), replace IP with your WSL2 IP:**
+```powershell
+netsh interface portproxy add v4tov4 listenport=8090 listenaddress=0.0.0.0 connectport=8090 connectaddress=172.22.177.162
+netsh interface portproxy add v4tov4 listenport=8081 listenaddress=0.0.0.0 connectport=8081 connectaddress=172.22.177.162
+```
+
+**Step 3 — Open in Windows browser:**
+```
+http://localhost:8090             # Frontend UI
+http://localhost:8081/api/users   # Backend API
+```
+
+> ⚠️ WSL2 IP changes on every reboot. Run `hostname -I | awk '{print $1}'` to get the new IP,  
+> then run `netsh interface portproxy reset` in PowerShell Admin and repeat Step 2.
 
 ---
 
@@ -131,19 +164,19 @@ http://<minikube-ip>:30080/api/users  # Backend API
 
 | Resource | Kind | Purpose |
 |----------|------|---------|
-| `mysql-secret` | Secret | Stores DB credentials (base64) |
-| `mysql-pv` | PersistentVolume | 2Gi hostPath storage |
-| `mysql-pvc` | PersistentVolumeClaim | Claims the PV |
+| `mysql-secret` | Secret | Stores DB credentials (base64 encoded) |
+| `mysql-pv` | PersistentVolume | 2Gi hostPath storage for data |
+| `mysql-pvc` | PersistentVolumeClaim | Claims the PersistentVolume |
 | `mysql-initdb-config` | ConfigMap | Runs init SQL on first boot |
 | `mysql` | StatefulSet | Manages MySQL pod with stable identity |
 | `mysql-headless` | Service (Headless) | Stable DNS for StatefulSet pods |
-| `mysql-service` | Service (ClusterIP) | Internal access for backend |
+| `mysql-service` | Service (ClusterIP) | Internal access for backend on port 3306 |
 
 ### Tier 2 — Spring Boot Backend
 
 | Resource | Kind | Purpose |
 |----------|------|---------|
-| `backend` | Deployment | 1 replica, with MySQL initContainer wait |
+| `backend` | Deployment | 1 replica with initContainer waiting for MySQL |
 | `backend-service` | Service (NodePort) | Exposes API on port `30080` |
 
 ### Tier 3 — Frontend UI
@@ -161,19 +194,19 @@ http://<minikube-ip>:30080/api/users  # Backend API
 |--------|----------|-------------|
 | `GET` | `/api/users` | Get all users |
 | `POST` | `/api/users` | Create a new user |
-| `DELETE` | `/api/users/{id}` | Delete a user |
+| `DELETE` | `/api/users/{id}` | Delete a user by ID |
 | `GET` | `/actuator/health` | Health check (used by K8s probes) |
 
 ### Example — Create a User
 ```bash
-curl -X POST http://<minikube-ip>:30080/api/users \
+curl -X POST http://192.168.49.2:30080/api/users \
   -H "Content-Type: application/json" \
   -d '{"name": "Karthik", "email": "karthik@example.com"}'
 ```
 
 ### Example — Get All Users
 ```bash
-curl http://<minikube-ip>:30080/api/users
+curl http://192.168.49.2:30080/api/users
 ```
 
 ---
@@ -187,7 +220,17 @@ curl http://<minikube-ip>:30080/api/users
 | MySQL User | `appuser` |
 | MySQL Password | `apppassword` |
 
-> ⚠️ To change credentials, encode with `echo -n 'newvalue' | base64` and update `k8s/mysql-secret.yaml`.
+> ⚠️ To change credentials: `echo -n 'newvalue' | base64` and update `k8s/mysql-secret.yaml`
+
+---
+
+## 🔄 Deploy Script Usage
+
+```bash
+./deploy.sh deploy     # Build images + deploy all K8s resources
+./deploy.sh status     # Show all running resources + access URLs
+./deploy.sh teardown   # Delete all resources and namespace
+```
 
 ---
 
@@ -206,55 +249,49 @@ kubectl logs -f deployment/backend -n three-tier
 # View frontend logs
 kubectl logs -f deployment/frontend -n three-tier
 
-# Shell into MySQL
+# Shell into MySQL pod
 kubectl exec -it mysql-0 -n three-tier -- mysql -u appuser -papppassword appdb
 
-# Scale backend to 3 replicas
+# Scale backend replicas
 kubectl scale deployment backend --replicas=3 -n three-tier
 
-# Check service URLs
-minikube service list
+# Describe a pod (for debugging)
+kubectl describe pod <pod-name> -n three-tier
+```
 
-# Teardown everything
+---
+
+## 🛑 Stopping the Application
+
+```bash
+# Step 1 — Stop port-forwards (WSL2 only)
+pkill -f "kubectl port-forward"
+
+# Step 2 — Delete all Kubernetes resources
 ./deploy.sh teardown
 
-# Check status
-./deploy.sh status
+# Step 3 — Stop Minikube
+minikube stop
 ```
+
+| Command | What it does |
+|---------|-------------|
+| `minikube stop` | Pauses Minikube (resume with `minikube start`) |
+| `minikube delete` | ⚠️ Completely removes Minikube cluster |
+| `./deploy.sh teardown` | Deletes all K8s resources in namespace |
 
 ---
 
-## 🔄 Deploy Script Usage
+## 🔁 Restarting After a Stop
 
 ```bash
-./deploy.sh deploy     # Build images + deploy all K8s resources
-./deploy.sh status     # Show all running resources + access URLs
-./deploy.sh teardown   # Delete all resources and namespace
+# Start Minikube
+minikube start --cpus=2 --memory=4096 --driver=docker
+
+# Redeploy the app
+cd ~/three-tier-app
+./deploy.sh deploy
 ```
-
----
-
-## 🖥️ Accessing from Windows (WSL2)
-
-If you're running Ubuntu in WSL2 and want to access from Windows browser:
-
-```bash
-# Port-forward frontend
-kubectl port-forward -n three-tier service/frontend-service 8090:80 --address 0.0.0.0
-
-# Get your Ubuntu IP
-hostname -I | awk '{print $1}'
-
-# Open in Windows browser
-http://<ubuntu-ip>:8090
-```
-
----
-
-## 📸 Screenshot
-
-![Three-Tier App UI](https://i.imgur.com/placeholder.png)
-> User Management UI — Add, view, and delete users stored in MySQL via Spring Boot API.
 
 ---
 
