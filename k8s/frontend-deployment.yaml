@@ -3,8 +3,6 @@ kind: Deployment
 metadata:
   name: frontend
   namespace: three-tier
-  labels:
-    app: frontend
 spec:
   replicas: 1
   selector:
@@ -17,8 +15,8 @@ spec:
     spec:
       containers:
         - name: frontend
-          image: frontend-ui:latest          # local Minikube image
-          imagePullPolicy: Never             # use local, don't pull from registry
+          image: frontend-ui:latest
+          imagePullPolicy: Never
           ports:
             - containerPort: 80
           resources:

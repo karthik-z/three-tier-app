@@ -3,8 +3,6 @@ kind: Deployment
 metadata:
   name: backend
   namespace: three-tier
-  labels:
-    app: backend
 spec:
   replicas: 1
   selector:
@@ -26,11 +24,10 @@ spec:
               until nc -z mysql-service.three-tier.svc.cluster.local 3306; do
                 echo "Waiting for MySQL..."; sleep 3;
               done
-              echo "MySQL is ready!"
       containers:
         - name: backend
-          image: springboot-backend:latest    # local Minikube image
-          imagePullPolicy: Never              # use local, don't pull from registry
+          image: springboot-backend:latest
+          imagePullPolicy: Never
           ports:
             - containerPort: 8080
           env:
